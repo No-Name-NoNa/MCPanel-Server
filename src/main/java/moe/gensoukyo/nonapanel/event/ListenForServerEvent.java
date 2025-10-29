@@ -2,12 +2,17 @@ package moe.gensoukyo.nonapanel.event;
 
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
+import lombok.Getter;
+import moe.gensoukyo.nonapanel.api.ClientSession;
 import moe.gensoukyo.nonapanel.api.ServerPlayer;
-import moe.gensoukyo.nonapanel.api.SimpleVec3;
-import moe.gensoukyo.nonapanel.config.PanelConfig;
+import moe.gensoukyo.nonapanel.api.SimpleServerPlayer;
+import moe.gensoukyo.nonapanel.info.ModInfo;
+import moe.gensoukyo.nonapanel.info.ServerInfo;
 import net.minecraft.server.MinecraftServer;
+import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.level.storage.LevelResource;
 import net.neoforged.bus.api.SubscribeEvent;
+import net.neoforged.fml.ModList;
 import net.neoforged.fml.common.EventBusSubscriber;
 import net.neoforged.neoforge.event.server.ServerStartingEvent;
 import net.neoforged.neoforge.event.tick.ServerTickEvent;
@@ -19,26 +24,60 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.CopyOnWriteArrayList;
 
+import static moe.gensoukyo.nonapanel.MinecraftServerPanel.LOGGER;
+
 @EventBusSubscriber
 public class ListenForServerEvent {
 
     private static final int LISTEN_PORT = 25570;
     private static final String ACCESS_KEY = "123456";
     private static final Gson GSON = new GsonBuilder().setPrettyPrinting().create();
+    @Getter
     private static final List<ServerPlayer> players = new ArrayList<>();
+    @Getter
+    private static final SimpleServerPlayer simplePlayer = new SimpleServerPlayer();
     private static final List<ClientSession> clients = new CopyOnWriteArrayList<>();
+    public static int time = 20;
+    @Getter
+    @SuppressWarnings("all")
+    private static List<ModInfo> modInfo = new ArrayList<>();
     private static boolean serverRunning = false;
     private static ServerSocket serverSocket;
+    @Getter
     private static ServerConfig config;
-    private static PanelConfig panelConfig;
+    @Getter
+    private static ServerInfo serverInfo;
     private static int tickCounter = 0;
+    private static volatile boolean isSendingData = false;
+
+    static {
+        @SuppressWarnings("all")
+        Thread dataSenderThread = new Thread(() -> {
+            while (true) {
+                try {
+                    Thread.sleep(1000);
+                    if (isSendingData) {
+                        for (ClientSession session : clients) {
+                            session.handleClientMessage(session.getLastStatus().name());
+                        }
+                        isSendingData = false;
+                    }
+                } catch (InterruptedException e) {
+                    LOGGER.error(e.getMessage());
+                }
+            }
+        });
+        dataSenderThread.start();
+    }
 
     @SubscribeEvent
     public static void onServerRunning(ServerTickEvent.Post event) {
         tickCounter++;
-        if (tickCounter >= 20) {
+        if (tickCounter >= time) {
+            serverInfo = getServerInfo(event.getServer());
+            simplePlayer.setPlayerList(event.getServer().getPlayerList().getPlayers().stream().map(Player::getScoreboardName).toList());
+            isSendingData = true;
             tickCounter = 0;
-            syncPlayers(event.getServer());
         }
     }
 
@@ -46,7 +85,8 @@ public class ListenForServerEvent {
     public static void onServerStarting(ServerStartingEvent event) {
         MinecraftServer server = event.getServer();
         configInitialize(server);
-        panelConfig = new PanelConfig(server.getWorldData().getLevelName(), server.getMotd(), server.getServerVersion());
+        initializeModList();
+        serverInfo = getServerInfo(server);
 
         new Thread(() -> {
             try {
@@ -60,7 +100,7 @@ public class ListenForServerEvent {
                 }
 
             } catch (Exception e) {
-                e.printStackTrace();
+                LOGGER.error(e.getMessage());
             }
         }, "MCPanel-Listener").start();
     }
@@ -69,6 +109,18 @@ public class ListenForServerEvent {
         File worldDir = server.getWorldPath(LevelResource.ROOT).toFile();
         File configFile = new File(worldDir, "mc_panel.json");
         loadServerConfig(configFile);
+    }
+
+    private static void initializeModList() {
+        ModList modList = ModList.get();
+        if (modList == null) return;
+        modList.getMods().forEach(mod -> {
+            String modId = mod.getModId();
+            String modName = mod.getDisplayName();
+            String modVersion = mod.getVersion().toString();
+            String modUrl = mod.getModURL().isPresent() ? mod.getModURL().get().toString() : "";        // 默认为 "N/A"
+            modInfo.add(new ModInfo(modId, modName, modVersion, modUrl));
+        });
     }
 
     private static void handleClient(Socket client) {
@@ -83,7 +135,7 @@ public class ListenForServerEvent {
                 out.writeUTF("OK");
                 log("Client authenticated successfully.");
 
-                String panelJson = GSON.toJson(panelConfig);
+                String panelJson = GSON.toJson(serverInfo);
                 out.writeUTF(panelJson);
                 out.flush();
 
@@ -100,7 +152,7 @@ public class ListenForServerEvent {
                 log("Client authentication failed: " + client.getRemoteSocketAddress());
             }
         } catch (Exception e) {
-            e.printStackTrace();
+            LOGGER.error(e.getMessage());
         }
     }
 
@@ -108,7 +160,7 @@ public class ListenForServerEvent {
         return config.accessKey.equals(key);
     }
 
-    private static void log(String message) {
+    public static void log(String message) {
         System.out.println("[MCPanel] " + message);
     }
 
@@ -127,131 +179,23 @@ public class ListenForServerEvent {
                 }
             }
         } catch (Exception e) {
-            e.printStackTrace();
+            LOGGER.error(e.getMessage());
             log("Failed to load/create config: " + e.getMessage());
         }
     }
 
-    private static void syncPlayers(MinecraftServer server) {
-        List<ServerPlayer> current = new ArrayList<>();
-
-        server.getPlayerList().getPlayers().forEach(p -> {
-            ServerPlayer sp = new ServerPlayer(
-                    p.getGameProfile().getName(),
-                    p.getUUID().toString(),
-                    new SimpleVec3((float) p.getX(), (float) p.getY(), (float) p.getZ()),
-                    p.level().dimension().location().toString(),
-                    p.connection.latency(),
-                    server.getProfilePermissions(p.getGameProfile())
-            );
-            current.add(sp);
-        });
-
-        List<ServerPlayer> added = new ArrayList<>();
-        List<ServerPlayer> removed = new ArrayList<>();
-        List<ServerPlayer> updated = new ArrayList<>();
-
-        for (ServerPlayer now : current) {
-            ServerPlayer old = findPlayerByUUID(players, now.uuid);
-            if (old == null) {
-                added.add(now);
-            } else if (!now.equals(old)) {
-                updated.add(now);
-            }
-        }
-
-        for (ServerPlayer old : players) {
-            if (findPlayerByUUID(current, old.uuid) == null) {
-                removed.add(old);
-            }
-        }
-
-        if (!added.isEmpty() || !removed.isEmpty() || !updated.isEmpty()) {
-            sendPlayerDiff(added, removed, updated);
-        }
-
-        players.clear();
-        players.addAll(current);
-    }
-
-    private static ServerPlayer findPlayerByUUID(List<ServerPlayer> list, String uuid) {
-        for (ServerPlayer p : list) {
-            if (p.uuid.equals(uuid)) return p;
-        }
-        return null;
-    }
-
-    private static void sendPlayerDiff(List<ServerPlayer> added, List<ServerPlayer> removed, List<ServerPlayer> updated) {
-        try {
-            DiffPacket diff = new DiffPacket(added, removed, updated);
-            String json = GSON.toJson(diff);
-            broadcastToClients(json);
-            log("Sent player diff: " + json);
-        } catch (Exception e) {
-            e.printStackTrace();
-        }
-    }
-
-    private static void broadcastToClients(String message) {
-        for (ClientSession client : clients) {
-            if (!client.send(message)) {
-                clients.remove(client);
-                log("Removed disconnected client.");
-            }
-        }
-    }
-
-    private record ClientSession(Socket socket, DataOutputStream out) {
-
-        void listen(DataInputStream in) {
-            try {
-                while (!socket.isClosed() && socket.isConnected()) {
-                    String msg = in.readUTF();
-                    log("Received from client: " + msg);
-                    if ("PING".equals(msg)) {
-                        send("PONG");
-                    }
-                }
-            } catch (IOException ignored) {
-            } finally {
-                close();
-            }
-        }
-
-        boolean send(String msg) {
-            try {
-                out.writeUTF(msg);
-                out.flush();
-                return true;
-            } catch (IOException e) {
-                close();
-                return false;
-            }
-        }
-
-        void close() {
-            try {
-                socket.close();
-            } catch (IOException ignored) {
-            }
-        }
-    }
-
-    private static class DiffPacket {
-        List<ServerPlayer> added;
-        List<ServerPlayer> removed;
-        List<ServerPlayer> updated;
-
-        DiffPacket(List<ServerPlayer> a, List<ServerPlayer> r, List<ServerPlayer> u) {
-            this.added = a;
-            this.removed = r;
-            this.updated = u;
-        }
+    protected static ServerInfo getServerInfo(MinecraftServer server) {
+        return new ServerInfo(
+                server.getWorldData().getLevelName(),
+                server.getMotd(), server.getServerVersion(),
+                server.getPlayerCount() + "/" + server.getMaxPlayers()
+        );
     }
 
     public static class ServerConfig {
         public String accessKey = ACCESS_KEY;
         public int port = LISTEN_PORT;
         public String description = "Default MCPanel configuration";
+        public int time = ListenForServerEvent.time;
     }
 }
