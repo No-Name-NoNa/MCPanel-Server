@@ -44,8 +44,20 @@ neoForge {
     runs {
         client {
             client()
+            devLogin = true
+            gameDirectory = project.file('run/client')
+            programArguments = [
+                    "--username", "No_Name_NoNa"
+            ]
+            systemProperty 'neoforge.enabledGameTestNamespaces', project.mod_id
+        }
 
-            // Comma-separated list of namespaces to load gametests from. Empty = all namespaces.
+        client2 {
+            client()
+            gameDirectory = project.file('run/client2')
+            programArguments = [
+                    "--username", "BOT_NoNa"
+            ]
             systemProperty 'neoforge.enabledGameTestNamespaces', project.mod_id
         }
 

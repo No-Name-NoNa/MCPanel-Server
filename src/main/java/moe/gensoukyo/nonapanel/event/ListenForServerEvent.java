@@ -6,10 +6,10 @@ import lombok.Getter;
 import moe.gensoukyo.nonapanel.api.ClientSession;
 import moe.gensoukyo.nonapanel.api.ServerPlayer;
 import moe.gensoukyo.nonapanel.api.SimpleServerPlayer;
+import moe.gensoukyo.nonapanel.api.SimpleServerPlayerList;
 import moe.gensoukyo.nonapanel.info.ModInfo;
 import moe.gensoukyo.nonapanel.info.ServerInfo;
 import net.minecraft.server.MinecraftServer;
-import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.level.storage.LevelResource;
 import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.fml.ModList;
@@ -34,10 +34,10 @@ public class ListenForServerEvent {
     private static final Gson GSON = new GsonBuilder().setPrettyPrinting().create();
     @Getter
     private static final List<ServerPlayer> players = new ArrayList<>();
-    @Getter
-    private static final SimpleServerPlayer simplePlayer = new SimpleServerPlayer();
     private static final List<ClientSession> clients = new CopyOnWriteArrayList<>();
     public static int time = 20;
+    @Getter
+    private static SimpleServerPlayerList simplePlayer = new SimpleServerPlayerList();
     @Getter
     @SuppressWarnings("all")
     private static List<ModInfo> modInfo = new ArrayList<>();
@@ -75,7 +75,11 @@ public class ListenForServerEvent {
         tickCounter++;
         if (tickCounter >= time) {
             serverInfo = getServerInfo(event.getServer());
-            simplePlayer.setPlayerList(event.getServer().getPlayerList().getPlayers().stream().map(Player::getScoreboardName).toList());
+            SimpleServerPlayerList players = new SimpleServerPlayerList();
+            for (net.minecraft.server.level.ServerPlayer player : event.getServer().getPlayerList().getPlayers()) {
+                players.getPlayerList().add(new SimpleServerPlayer(player.getScoreboardName(), player.getUUID().toString(), String.valueOf(player.connection.latency())));
+            }
+            simplePlayer = players;
             isSendingData = true;
             tickCounter = 0;
         }
