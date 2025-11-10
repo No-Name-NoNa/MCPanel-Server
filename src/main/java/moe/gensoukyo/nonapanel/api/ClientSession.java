@@ -4,17 +4,23 @@ import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
 import lombok.Getter;
 import lombok.Setter;
+import moe.gensoukyo.nonapanel.event.ChatHandler;
 import moe.gensoukyo.nonapanel.event.ServerEvent;
 
 import java.io.DataInputStream;
 import java.io.DataOutputStream;
 import java.io.IOException;
 import java.net.Socket;
+import java.util.Queue;
+import java.util.concurrent.ConcurrentLinkedQueue;
+
+import static moe.gensoukyo.nonapanel.event.ChatHandler.MAX_MESSAGE;
 
 @Getter
 @Setter
 public class ClientSession {
     private static Gson gson = new GsonBuilder().setPrettyPrinting().create();
+    private final Queue<String> broadcastMessages = new ConcurrentLinkedQueue<>();
     private final Socket socket;
     private final DataOutputStream out;
     private Status lastStatus = Status.INFO;
@@ -39,24 +45,88 @@ public class ClientSession {
 
     public void handleClientMessage(String msg) {
         if (msg.contains("-")) {
-            String[] parts = msg.split("-", 2);
-            String firstPart = parts[0];
-            String secondPart = parts[1];
-            if (firstPart.equals("DETAILED_PLAYER")) {
-                lastStatus = Status.DETAILED_PLAYER.setUsername(secondPart);
-            }
-            msg = firstPart;
+            handleSpecialMessage(msg);
+            return;
         }
+
         switch (msg) {
-            case "INFO" -> send(gson.toJson(ServerEvent.getServerInfo()), Status.INFO);
-            case "MODS" -> send(gson.toJson(ServerEvent.getModInfo()), Status.MODS);
-            case "PLAYERS" -> send(gson.toJson(ServerEvent.getSimplePlayer()), Status.PLAYERS);
-            case "DETAILED_PLAYER" -> send(gson.toJson(ServerEvent.getUser(Status.DETAILED_PLAYER.getUsername())), Status.DETAILED_PLAYER);
-            case "PING" -> send("PONG", Status.PING);
-            case "STATUS" -> {
-            }
-            default -> ServerEvent.log("Unknown message: " + msg);
+            case "INFO" -> sendServerInfo();
+            case "MODS" -> sendModsInfo();
+            case "PLAYERS" -> sendPlayersInfo();
+            case "DETAILED_PLAYER" -> sendDetailedPlayerInfo();
+            case "PING" -> sendPingResponse();
+            case "CHAT" -> sendChatMessages();
+            case "CHAT_CONTINUE" -> sendContinuedChatMessages();
+            case "STATUS" -> handleStatusRequest();
+            default -> logUnknownMessage(msg);
         }
+    }
+
+    private void handleSpecialMessage(String msg) {
+        String[] split = msg.split("-", 2);
+        String first = split[0];
+        msg = split[1];
+
+        if (first.equals("COMMAND")) {
+            handleConsoleCommand(msg);
+        } else if (first.equals("CHAT")) {
+            handleChatMessages(msg);
+        } else {
+            handleDetailedPlayerMessage(msg);
+        }
+    }
+
+    private void handleConsoleCommand(String msg) {
+        ChatHandler.addMessage(msg, "[Server]");
+        ServerEvent.getCommandQueue().add(msg);
+    }
+
+    private void handleDetailedPlayerMessage(String msg) {
+        lastStatus = Status.DETAILED_PLAYER.setUsername(msg);
+        send(gson.toJson(ServerEvent.getUser(Status.DETAILED_PLAYER.getUsername())), Status.DETAILED_PLAYER);
+    }
+
+    private void handleChatMessages(String msg) {
+        ChatHandler.addMessage(msg, "[Server]");
+        ServerEvent.getChatQueue().add(msg);
+    }
+
+    private void sendServerInfo() {
+        send(gson.toJson(ServerEvent.getServerInfo()), Status.INFO);
+    }
+
+    private void sendModsInfo() {
+        send(gson.toJson(ServerEvent.getModInfo()), Status.MODS);
+    }
+
+    private void sendPlayersInfo() {
+        send(gson.toJson(ServerEvent.getSimplePlayer()), Status.PLAYERS);
+    }
+
+    private void sendDetailedPlayerInfo() {
+        send(gson.toJson(ServerEvent.getUser(Status.DETAILED_PLAYER.getUsername())), Status.DETAILED_PLAYER);
+    }
+
+    private void sendPingResponse() {
+        send("PONG", Status.PING);
+    }
+
+    private void sendChatMessages() {
+        send(gson.toJson(ChatHandler.messages), Status.CHAT);
+        lastStatus = Status.CHAT_CONTINUE;
+        broadcastMessages.clear();
+    }
+
+    private void sendContinuedChatMessages() {
+        send(gson.toJson(broadcastMessages), Status.CHAT_CONTINUE);
+        broadcastMessages.clear();
+    }
+
+    private void handleStatusRequest() {
+    }
+
+    private void logUnknownMessage(String msg) {
+        ServerEvent.log("Unknown message: " + msg);
     }
 
     public void send(String msg, Status status) {
@@ -74,6 +144,13 @@ public class ClientSession {
         try {
             socket.close();
         } catch (IOException ignored) {
+        }
+    }
+
+    public void addMessage(String msg, String username) {
+        broadcastMessages.add(username + ": " + msg);
+        if (broadcastMessages.size() > MAX_MESSAGE) {
+            broadcastMessages.poll();
         }
     }
 }

@@ -13,7 +13,7 @@ public class SimpleVec3 {
         this.z = z;
     }
 
-    public SimpleVec3(Vec3 vec3){
+    public SimpleVec3(Vec3 vec3) {
         this.x = vec3.x;
         this.y = vec3.y;
         this.z = vec3.z;

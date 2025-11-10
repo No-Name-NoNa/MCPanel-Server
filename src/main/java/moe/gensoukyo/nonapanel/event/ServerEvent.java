@@ -6,6 +6,7 @@ import lombok.Getter;
 import moe.gensoukyo.nonapanel.api.*;
 import moe.gensoukyo.nonapanel.info.ModInfo;
 import moe.gensoukyo.nonapanel.info.ServerInfo;
+import net.minecraft.network.chat.Component;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.world.level.GameType;
 import net.minecraft.world.level.storage.LevelResource;
@@ -20,6 +21,8 @@ import java.net.ServerSocket;
 import java.net.Socket;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Queue;
+import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.CopyOnWriteArrayList;
 
 import static moe.gensoukyo.nonapanel.MinecraftServerPanel.LOGGER;
@@ -33,7 +36,12 @@ public class ServerEvent {
     private static final Gson GSON = new GsonBuilder().setPrettyPrinting().create();
     @Getter
     private static final List<ServerPlayer> players = new ArrayList<>();
+    @Getter
     private static final List<ClientSession> clients = new CopyOnWriteArrayList<>();
+    @Getter
+    private static final Queue<String> commandQueue = new ConcurrentLinkedQueue<>();
+    @Getter
+    private static final Queue<String> chatQueue = new ConcurrentLinkedQueue<>();
     public static int time = 20;
     @Getter
     private static SimpleServerPlayerList simplePlayer = new SimpleServerPlayerList();
@@ -71,6 +79,21 @@ public class ServerEvent {
 
     @SubscribeEvent
     public static void onServerRunning(ServerTickEvent.Post event) {
+        if (!commandQueue.isEmpty()) {
+            MinecraftServer server = event.getServer();
+            for (String s : commandQueue) {
+                server.getCommands().performPrefixedCommand(server.createCommandSourceStack(), s);
+            }
+            commandQueue.clear();
+        }
+        if (!chatQueue.isEmpty()) {
+            MinecraftServer server = event.getServer();
+            for (String s : chatQueue) {
+                server.getPlayerList().getPlayers().forEach(p -> p.sendSystemMessage(Component.literal("[Server] " + s)));
+            }
+            chatQueue.clear();
+        }
+
         tickCounter++;
         if (tickCounter >= time) {
             serverInfo = getServerInfo(event.getServer());
@@ -201,7 +224,7 @@ public class ServerEvent {
         }
     }
 
-    public static ServerPlayer getUser(String username){
+    public static ServerPlayer getUser(String username) {
         for (ServerPlayer player : players) {
             if (player.name().equals(username)) return player;
         }
@@ -209,8 +232,8 @@ public class ServerEvent {
     }
 
 
-    public static GameMode convert(GameType type){
-        return switch (type){
+    public static GameMode convert(GameType type) {
+        return switch (type) {
             case SURVIVAL -> SURVIVAL;
             case CREATIVE -> CREATIVE;
             case SPECTATOR -> SPECTATOR;

@@ -9,12 +9,15 @@ public enum Status {
     PLAYERS,
     DETAILED_PLAYER("dev"),
     STATUS,
+    CHAT,
+    CHAT_CONTINUE,
     PING;
 
     @Getter
     private String username;
 
-    Status(){}
+    Status() {
+    }
 
     Status(String username) {
         this.username = "status";
