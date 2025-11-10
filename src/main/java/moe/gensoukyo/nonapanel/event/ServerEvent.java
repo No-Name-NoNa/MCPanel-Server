@@ -3,13 +3,11 @@ package moe.gensoukyo.nonapanel.event;
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
 import lombok.Getter;
-import moe.gensoukyo.nonapanel.api.ClientSession;
-import moe.gensoukyo.nonapanel.api.ServerPlayer;
-import moe.gensoukyo.nonapanel.api.SimpleServerPlayer;
-import moe.gensoukyo.nonapanel.api.SimpleServerPlayerList;
+import moe.gensoukyo.nonapanel.api.*;
 import moe.gensoukyo.nonapanel.info.ModInfo;
 import moe.gensoukyo.nonapanel.info.ServerInfo;
 import net.minecraft.server.MinecraftServer;
+import net.minecraft.world.level.GameType;
 import net.minecraft.world.level.storage.LevelResource;
 import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.fml.ModList;
@@ -25,9 +23,10 @@ import java.util.List;
 import java.util.concurrent.CopyOnWriteArrayList;
 
 import static moe.gensoukyo.nonapanel.MinecraftServerPanel.LOGGER;
+import static moe.gensoukyo.nonapanel.api.GameMode.*;
 
 @EventBusSubscriber
-public class ListenForServerEvent {
+public class ServerEvent {
 
     private static final int LISTEN_PORT = 25570;
     private static final String ACCESS_KEY = "123456";
@@ -76,9 +75,23 @@ public class ListenForServerEvent {
         if (tickCounter >= time) {
             serverInfo = getServerInfo(event.getServer());
             SimpleServerPlayerList players = new SimpleServerPlayerList();
+            List<ServerPlayer> serverPlayers = new ArrayList<>();
             for (net.minecraft.server.level.ServerPlayer player : event.getServer().getPlayerList().getPlayers()) {
-                players.getPlayerList().add(new SimpleServerPlayer(player.getScoreboardName(), player.getUUID().toString(), String.valueOf(player.connection.latency())));
+                players.getPlayerList().add(new SimpleServerPlayer(player.getScoreboardName()));
+                serverPlayers.add(new ServerPlayer(
+                        player.getScoreboardName(),
+                        player.getStringUUID(),
+                        new SimpleVec3(player.position()),
+                        player.level().dimension().location().toString(),
+                        convert(player.gameMode.getGameModeForPlayer()),
+                        player.getHealth(),
+                        player.getFoodData().getFoodLevel(),
+                        player.connection.latency(),
+                        player.server.getProfilePermissions(player.getGameProfile())
+                ));
             }
+            getPlayers().clear();
+            getPlayers().addAll(serverPlayers);
             simplePlayer = players;
             isSendingData = true;
             tickCounter = 0;
@@ -188,6 +201,23 @@ public class ListenForServerEvent {
         }
     }
 
+    public static ServerPlayer getUser(String username){
+        for (ServerPlayer player : players) {
+            if (player.name().equals(username)) return player;
+        }
+        return null;
+    }
+
+
+    public static GameMode convert(GameType type){
+        return switch (type){
+            case SURVIVAL -> SURVIVAL;
+            case CREATIVE -> CREATIVE;
+            case SPECTATOR -> SPECTATOR;
+            default -> ADVENTURE;
+        };
+    }
+
     protected static ServerInfo getServerInfo(MinecraftServer server) {
         return new ServerInfo(
                 server.getWorldData().getLevelName(),
@@ -200,6 +230,6 @@ public class ListenForServerEvent {
         public String accessKey = ACCESS_KEY;
         public int port = LISTEN_PORT;
         public String description = "Default MCPanel configuration";
-        public int time = ListenForServerEvent.time;
+        public int time = ServerEvent.time;
     }
 }

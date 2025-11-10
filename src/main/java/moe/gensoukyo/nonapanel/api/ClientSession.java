@@ -4,7 +4,7 @@ import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
 import lombok.Getter;
 import lombok.Setter;
-import moe.gensoukyo.nonapanel.event.ListenForServerEvent;
+import moe.gensoukyo.nonapanel.event.ServerEvent;
 
 import java.io.DataInputStream;
 import java.io.DataOutputStream;
@@ -28,7 +28,7 @@ public class ClientSession {
         try {
             while (!socket.isClosed() && socket.isConnected()) {
                 String msg = in.readUTF();
-                ListenForServerEvent.log("Received from client: " + msg);
+                ServerEvent.log("Received from client: " + msg);
                 handleClientMessage(msg);
             }
         } catch (IOException ignored) {
@@ -38,14 +38,24 @@ public class ClientSession {
     }
 
     public void handleClientMessage(String msg) {
+        if (msg.contains("-")) {
+            String[] parts = msg.split("-", 2);
+            String firstPart = parts[0];
+            String secondPart = parts[1];
+            if (firstPart.equals("DETAILED_PLAYER")) {
+                lastStatus = Status.DETAILED_PLAYER.setUsername(secondPart);
+            }
+            msg = firstPart;
+        }
         switch (msg) {
-            case "INFO" -> send(gson.toJson(ListenForServerEvent.getServerInfo()), Status.INFO);
-            case "MODS" -> send(gson.toJson(ListenForServerEvent.getModInfo()), Status.MODS);
-            case "PLAYERS" -> send(gson.toJson(ListenForServerEvent.getSimplePlayer()), Status.PLAYERS);
+            case "INFO" -> send(gson.toJson(ServerEvent.getServerInfo()), Status.INFO);
+            case "MODS" -> send(gson.toJson(ServerEvent.getModInfo()), Status.MODS);
+            case "PLAYERS" -> send(gson.toJson(ServerEvent.getSimplePlayer()), Status.PLAYERS);
+            case "DETAILED_PLAYER" -> send(gson.toJson(ServerEvent.getUser(Status.DETAILED_PLAYER.getUsername())), Status.DETAILED_PLAYER);
             case "PING" -> send("PONG", Status.PING);
             case "STATUS" -> {
             }
-            default -> ListenForServerEvent.log("Unknown message: " + msg);
+            default -> ServerEvent.log("Unknown message: " + msg);
         }
     }
 
