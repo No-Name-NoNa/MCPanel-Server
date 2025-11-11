@@ -4,8 +4,9 @@ import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
 import lombok.Getter;
 import moe.gensoukyo.nonapanel.api.*;
-import moe.gensoukyo.nonapanel.info.ModInfo;
-import moe.gensoukyo.nonapanel.info.ServerInfo;
+import moe.gensoukyo.nonapanel.api.info.ModInfo;
+import moe.gensoukyo.nonapanel.api.info.ServerInfo;
+import moe.gensoukyo.nonapanel.handler.MessageHandler;
 import net.minecraft.network.chat.Component;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.world.level.GameType;
@@ -30,7 +31,8 @@ import static moe.gensoukyo.nonapanel.api.GameMode.*;
 
 @EventBusSubscriber
 public class ServerEvent {
-
+    public static final int TICK_CACHE = 60 * 24 * 7;
+    public static final int TICK_REFRESH = 60;
     private static final int LISTEN_PORT = 25570;
     private static final String ACCESS_KEY = "123456";
     private static final Gson GSON = new GsonBuilder().setPrettyPrinting().create();
@@ -42,7 +44,12 @@ public class ServerEvent {
     private static final Queue<String> commandQueue = new ConcurrentLinkedQueue<>();
     @Getter
     private static final Queue<String> chatQueue = new ConcurrentLinkedQueue<>();
+    @Getter
+    private static final Queue<ServerStatus> tickQueue = new ConcurrentLinkedQueue<>();
     public static int time = 20;
+    private static int count = 0;
+    @Getter
+    private static long serverRunTime = 0;
     @Getter
     private static SimpleServerPlayerList simplePlayer = new SimpleServerPlayerList();
     @Getter
@@ -57,6 +64,7 @@ public class ServerEvent {
     private static int tickCounter = 0;
     private static volatile boolean isSendingData = false;
 
+
     static {
         @SuppressWarnings("all")
         Thread dataSenderThread = new Thread(() -> {
@@ -65,7 +73,12 @@ public class ServerEvent {
                     Thread.sleep(1000);
                     if (isSendingData) {
                         for (ClientSession session : clients) {
-                            session.handleClientMessage(session.getLastStatus().name());
+                            String info = session.getLastStatus().name();
+                            String user = session.getLastStatus().getUsername();
+                            if (user != null && !user.isEmpty()) {
+                                info = info + "-" + user;
+                            }
+                            session.handleClientMessage(info);
                         }
                         isSendingData = false;
                     }
@@ -95,11 +108,26 @@ public class ServerEvent {
         }
 
         tickCounter++;
-        if (tickCounter >= time) {
-            serverInfo = getServerInfo(event.getServer());
+
+        if (tickCounter >= 20) {
+            serverRunTime++;
+            MinecraftServer server = event.getServer();
+            if (count >= TICK_REFRESH) {
+                float tick = Math.min(20, 100000000.0f / server.getAverageTickTimeNanos());
+                ServerStatus status = new ServerStatus(String.valueOf(serverRunTime), tick);
+                tickQueue.add(status);
+                MessageHandler.addServerStatusMessage(status);
+                if (tickQueue.size() > TICK_CACHE) {
+                    tickQueue.poll();
+                }
+                count = -1;
+            }
+            count++;
+
+            serverInfo = getServerInfo(server);
             SimpleServerPlayerList players = new SimpleServerPlayerList();
             List<ServerPlayer> serverPlayers = new ArrayList<>();
-            for (net.minecraft.server.level.ServerPlayer player : event.getServer().getPlayerList().getPlayers()) {
+            for (net.minecraft.server.level.ServerPlayer player : server.getPlayerList().getPlayers()) {
                 players.getPlayerList().add(new SimpleServerPlayer(player.getScoreboardName()));
                 serverPlayers.add(new ServerPlayer(
                         player.getScoreboardName(),

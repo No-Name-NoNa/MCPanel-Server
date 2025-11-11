@@ -1,6 +1,8 @@
-package moe.gensoukyo.nonapanel.event;
+package moe.gensoukyo.nonapanel.handler;
 
 import moe.gensoukyo.nonapanel.api.ClientSession;
+import moe.gensoukyo.nonapanel.api.ServerStatus;
+import moe.gensoukyo.nonapanel.event.ServerEvent;
 import net.neoforged.api.distmarker.Dist;
 import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.fml.common.EventBusSubscriber;
@@ -11,7 +13,7 @@ import java.util.Queue;
 import java.util.concurrent.ConcurrentLinkedQueue;
 
 @EventBusSubscriber(value = Dist.DEDICATED_SERVER)
-public class ChatHandler {
+public class MessageHandler {
     public static final int MAX_MESSAGE = 1000;
     public static Queue<String> messages = new ConcurrentLinkedQueue<>();
 
@@ -19,10 +21,10 @@ public class ChatHandler {
     public static void listen(ServerChatEvent event) {
         String rawMessage = event.getRawText();
         String sender = event.getUsername();
-        addMessage(rawMessage, sender);
+        addChatMessage(rawMessage, sender);
     }
 
-    public static void addMessage(String message, String sender) {
+    public static void addChatMessage(String message, String sender) {
         messages.add(sender + ": " + message);
         for (ClientSession session : ServerEvent.getClients()) {
             session.addMessage(message, sender);
@@ -32,17 +34,28 @@ public class ChatHandler {
         }
     }
 
+    public static void addServerStatusMessage(ServerStatus msg) {
+        for (ClientSession session : ServerEvent.getClients()) {
+            session.addTick(msg);
+        }
+    }
+
     @SubscribeEvent
     public static void login(PlayerEvent.PlayerLoggedInEvent event) {
-        addMessage("main.player.joined", event.getEntity().getScoreboardName());
+        addChatMessage("main.player.joined", event.getEntity().getScoreboardName());
     }
 
     @SubscribeEvent
     public static void logout(PlayerEvent.PlayerLoggedOutEvent event) {
-        addMessage("main.player.left", event.getEntity().getScoreboardName());
+        addChatMessage("main.player.left", event.getEntity().getScoreboardName());
     }
 
  /*   @SubscribeEvent
+    public static void command(CommandEvent event){
+
+    }*/
+
+/*    @SubscribeEvent
     public static void death(LivingDeathEvent event) {
         if(event.getEntity() instanceof Player player) {
             addMessage("main.player.death", player.getScoreboardName());

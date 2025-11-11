@@ -1,6 +1,5 @@
 package moe.gensoukyo.nonapanel.api;
 
-
 import lombok.Getter;
 
 public enum Status {
@@ -9,9 +8,11 @@ public enum Status {
     PLAYERS,
     DETAILED_PLAYER("dev"),
     STATUS,
+    STATUS_CONTINUE,
     CHAT,
     CHAT_CONTINUE,
-    PING;
+    PING,
+    OPTION;
 
     @Getter
     private String username;

@@ -1,4 +1,4 @@
-package moe.gensoukyo.nonapanel.info;
+package moe.gensoukyo.nonapanel.api.info;
 
 public record ServerInfo(String serverName,
                          String serverIntro,
