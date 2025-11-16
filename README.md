@@ -1,25 +1,22 @@
+# MCPanel-Server - 构建与启动指南
 
-Installation information
-=======
+## 环境要求
 
-This template repository can be directly cloned to get you started with a new
-mod. Simply create a new repository cloned from this one, by following the
-instructions provided by [GitHub](https://docs.github.com/en/repositories/creating-and-managing-repositories/creating-a-repository-from-a-template).
+- **Java 21**：确保项目的 Java 版本设置为 **Java 21**。
 
-Once you have your clone, simply open the repository in the IDE of your choice. The usual recommendation for an IDE is either IntelliJ IDEA or Eclipse.
+## 构建 MOD 文件
 
-If at any point you are missing libraries in your IDE, or you've run into problems you can
-run `gradlew --refresh-dependencies` to refresh the local cache. `gradlew clean` to reset everything 
-{this does not affect your code} and then start the process again.
+1. 打开 IntelliJ IDEA，并确保已正确导入 **MCPanel-Server** 项目。
+2. 确保项目的 **Java 版本** 设置为 **Java 21**，并且 Gradle 已成功加载项目。
+3. 在 **Gradle** 工具窗口中，展开 **Tasks**：
+    - `build`
+4. 运行 **build** 任务以构建项目，最终的 **MOD 文件** 会生成在 `build/libs/` 目录下。
 
-Mapping Names:
-============
-By default, the MDK is configured to use the official mapping names from Mojang for methods and fields 
-in the Minecraft codebase. These names are covered by a specific license. All modders should be aware of this
-license. For the latest license text, refer to the mapping file itself, or the reference copy here:
-https://github.com/NeoForged/NeoForm/blob/main/Mojang.md
+## 启动 MCPanel-Server
 
-Additional Resources: 
-==========
-Community Documentation: https://docs.neoforged.net/  
-NeoForged Discord: https://discord.neoforged.net/
+1. 在 IntelliJ IDEA 中，选择 **MCPanel-Server** 项目。
+2. 点击 **Tasks-mod development**，然后选择 **runServer** 或 **runClient** 启动。
+
+### 启动说明：
+- **runServer**：启动服务器端，自动下载服务端文件并运行。
+- **runClient**：启动客户端，自动下载客户端文件并运行。
